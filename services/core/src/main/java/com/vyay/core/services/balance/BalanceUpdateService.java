@@ -5,6 +5,7 @@ import com.vyay.core.common.security.HmacSigner;
 import com.vyay.core.entity.balance.BalanceLedgerEntry;
 import com.vyay.core.repository.BalanceLedgerRepository;
 import com.vyay.core.repository.BalanceRepository;
+import com.vyay.core.repository.UserBalanceTotalRepository;
 import com.vyay.core.repository.UserRepository;
 import com.vyay.core.services.balance.commands.BalanceUpdateCommand;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,15 +19,18 @@ public class BalanceUpdateService {
     private final BalanceRepository balanceRepository;
     private final BalanceLedgerRepository ledgerRepository;
     private final UserRepository userRepository;
+    private final UserBalanceTotalRepository userBalanceTotalRepository;
     private final HmacSigner hmacSigner;
 
     public BalanceUpdateService(BalanceRepository balanceRepository,
                                 BalanceLedgerRepository ledgerRepository,
                                 UserRepository userRepository,
-                                HmacSigner hmacSigner) {        
+                                UserBalanceTotalRepository userBalanceTotalRepository,
+                                HmacSigner hmacSigner) {
         this.balanceRepository = balanceRepository;
         this.ledgerRepository = ledgerRepository;
         this.userRepository = userRepository;
+        this.userBalanceTotalRepository = userBalanceTotalRepository;
         this.hmacSigner = hmacSigner;
     }
 
@@ -61,6 +65,19 @@ public class BalanceUpdateService {
         }
 
         balanceRepository.applyDeltasBatch(ids, groupIds, userIds, currencyIds, deltas);
+
+        // Roll the per-group balances we just wrote up into user_balance_totals for
+        // exactly the users touched by this command, in the same transaction so the
+        // rollup can never drift from SUM(balances). userIds already holds the
+        // distinct affected users (deltas map keys). The three steps are ordered:
+        //   1. ensure a lockable row exists for every (user, currency) pair,
+        //   2. lock those rows so concurrent recomputes on the same user serialise,
+        //   3. recompute the totals from balances.
+        // See UserBalanceTotalRepository for the concurrency reasoning.
+        userBalanceTotalRepository.ensureTotalsRows(userIds);
+        userBalanceTotalRepository.lockTotalsRows(userIds);
+        userBalanceTotalRepository.recomputeTotals(userIds);
+
         ledgerRepository.saveAll(ledgerEntries);
     }
 }
