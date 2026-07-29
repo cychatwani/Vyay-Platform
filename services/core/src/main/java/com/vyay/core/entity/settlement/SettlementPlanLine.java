@@ -12,22 +12,20 @@ import java.time.Instant;
  * One directed transfer a plan proposes: {@code fromUser} (debtor) pays
  * {@code toUser} (creditor) {@code amountMinor}.
  *
- * Immutable — a plan is regenerated wholesale, never edited — so there is no
- * setter, no updated_at, and no version. There is also NO status column: line
- * progress (PENDING / PARTIALLY_FULFILLED / COMPLETED) is DERIVED from the
- * settlements linked via {@link SettlementPlanLineFulfillment}, never stored.
+ * Immutable — a line never changes payer, payee, or amount, only its execution
+ * state — so there is no setter, no updated_at, and no version. There is also NO
+ * status column: line progress (PENDING / PARTIALLY_FULFILLED / COMPLETED) is
+ * DERIVED from the settlements linked via {@link SettlementPlanLineFulfillment},
+ * never stored.
  *
- * The (plan, fromUser, toUser) uniqueness is the row reconciliation matches a
- * confirmed settlement against.
+ * Deliberately NOT unique per (plan, fromUser, toUser): the append model lets a
+ * plan carry several lines for the same ordered pair (an original line plus a
+ * later appended one). Reconciliation matches on the pair and fills those lines
+ * oldest-first by id (UUIDv7 is time-ordered). An appended line is simply one
+ * whose createdAt is later than its plan's.
  */
 @Entity
-@Table(
-        name = "settlement_plan_line",
-        uniqueConstraints = @UniqueConstraint(
-                name = "uk_settlement_plan_line_plan_from_to",
-                columnNames = {"plan_id", "from_user_id", "to_user_id"}
-        )
-)
+@Table(name = "settlement_plan_line")
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor

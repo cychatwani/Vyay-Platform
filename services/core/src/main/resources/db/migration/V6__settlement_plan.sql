@@ -8,15 +8,29 @@
 --   settlement_plan                  — the aggregate: one live plan per
 --                                      (group, currency), with a stored status.
 --   settlement_plan_line             — a directed transfer (from -> to, amount)
---                                      the plan proposes. Immutable. NO status
---                                      column: line progress is DERIVED from the
---                                      settlements linked to it, never stored.
---   settlement_plan_line_fulfillment — the link between a plan line and the
---                                      real settlements that (partially) fulfil
---                                      it. Fulfilment lives entirely in this
---                                      join, so nothing can drift from the
---                                      settlements table and a rejected/undone
---                                      settlement simply drops out of the sums.
+--                                      the plan proposes. Immutable: a line never
+--                                      changes payer, payee, or amount, only its
+--                                      execution state. NO status column — line
+--                                      progress is DERIVED from the settlements
+--                                      linked to it, never stored.
+--   settlement_plan_line_fulfillment — the link between a plan line and a real
+--                                      settlement, recording how much of that
+--                                      settlement applied to this line
+--                                      (applied_amount_minor). Fulfilment lives
+--                                      entirely in this join, so nothing can
+--                                      drift from the settlements table and a
+--                                      rejected/undone settlement simply drops
+--                                      out of the sums.
+--
+-- Line immutability / append principle: a plan is an execution workflow, not a
+-- recommendation. When reality changes (a forgotten expense during settle-up),
+-- we APPEND new lines or mark the plan STALE — we never rewrite an existing line.
+-- The visible new line is the trust mechanism: a member sees their original line
+-- untouched and the extra arriving separately. Consequences enforced below:
+--   * a plan may hold SEVERAL lines for the same ordered pair (no pair-unique);
+--   * one settlement may fulfil SEVERAL lines (applied_amount_minor per link);
+--   * an appended line is simply one whose created_at > its plan's created_at —
+--     no separate "appended" flag needed.
 --
 -- Why status is STORED on the plan but DERIVED on the line:
 --   * Line progress (PENDING / PARTIALLY_FULFILLED / COMPLETED) is a pure
@@ -78,9 +92,10 @@ CREATE TABLE settlement_plan_line (
     amount_minor bigint      NOT NULL,
     created_at   timestamptz NOT NULL,
     PRIMARY KEY (id),
-    -- One directed edge per ordered pair within a plan. This is also the row
-    -- reconciliation matches a confirmed settlement against (plan_id, from, to).
-    CONSTRAINT uk_settlement_plan_line_plan_from_to UNIQUE (plan_id, from_user_id, to_user_id),
+    -- Deliberately NO pair-uniqueness: the append model allows several lines for
+    -- the same (plan, from, to) — e.g. an original B->A line plus a later appended
+    -- B->A line. Reconciliation matches on (plan_id, from, to) and fills those
+    -- lines oldest-first (by id; UUIDv7 is time-ordered).
     CONSTRAINT ck_settlement_plan_line_amount_positive CHECK (amount_minor > 0),
     CONSTRAINT ck_settlement_plan_line_distinct_parties CHECK (from_user_id <> to_user_id)
 );
@@ -89,19 +104,26 @@ CREATE TABLE settlement_plan_line (
 -- settlement_plan_line_fulfillment — line <-> settlement link (derived progress)
 -- ---------------------------------------------------------------------
 CREATE TABLE settlement_plan_line_fulfillment (
-    id            uuid        NOT NULL,
-    plan_line_id  uuid        NOT NULL,
-    settlement_id uuid        NOT NULL,
-    created_at    timestamptz NOT NULL,
+    id                   uuid        NOT NULL,
+    plan_line_id         uuid        NOT NULL,
+    settlement_id        uuid        NOT NULL,
+    -- How much of THIS settlement applied to THIS line. Without it, a 120-unit
+    -- settlement linked to a 100 line and a 20 line would read as 120 fulfilled on
+    -- BOTH. The service enforces that a settlement's applied amounts across all its
+    -- links never exceed the settlement's own amount.
+    applied_amount_minor bigint      NOT NULL,
+    created_at           timestamptz NOT NULL,
     PRIMARY KEY (id),
-    -- A settlement fulfils AT MOST ONE line: unique on settlement_id.
-    CONSTRAINT uk_settlement_plan_line_fulfillment_settlement UNIQUE (settlement_id)
-    -- plan_line_id is deliberately NOT unique: one line may be fulfilled by
-    -- several settlements (partial fulfilment).
+    -- One link per (line, settlement): a settlement fulfils a given line at most
+    -- once, but MAY fulfil several different lines (one row each). Neither column
+    -- is unique on its own.
+    CONSTRAINT uk_settlement_plan_line_fulfillment_line_settlement UNIQUE (plan_line_id, settlement_id),
+    CONSTRAINT ck_settlement_plan_line_fulfillment_applied_positive CHECK (applied_amount_minor > 0)
 );
 
--- Sum fulfilments per line (the derived-progress read path); plan_line_id is
--- non-unique so it needs its own index.
+-- The per-line progress aggregate groups fulfilments by plan_line_id; keep a
+-- dedicated index for that read path (the composite unique above leads with
+-- plan_line_id, but this keeps the grouping intent explicit).
 CREATE INDEX idx_settlement_plan_line_fulfillment_line
     ON settlement_plan_line_fulfillment (plan_line_id);
 

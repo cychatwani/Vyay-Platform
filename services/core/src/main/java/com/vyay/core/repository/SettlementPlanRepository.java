@@ -56,17 +56,34 @@ public interface SettlementPlanRepository extends JpaRepository<SettlementPlan, 
     int markStaleIfActive(@Param("groupId") UUID groupId, @Param("currencyId") UUID currencyId);
 
     /**
-     * Vacate the live slot before a regeneration inserts the new ACTIVE plan.
-     * Must run in the same transaction as that insert (the partial index covers
-     * STALE too, so the old plan has to leave the slot first).
+     * Regeneration step 1: vacate the live slot by moving the current plan to
+     * SUPERSEDED. Sets status ONLY — superseded_by is filled by
+     * {@link #linkSuperseded} after the replacement row exists, so the self-FK is
+     * never checked against a not-yet-inserted plan and needs no deferred
+     * constraint. Must run in the same transaction as the insert + link (the
+     * partial index covers STALE too, so the old plan has to leave the slot first).
      */
     @Modifying
     @Query(value = """
             UPDATE settlement_plan
-            SET status = 'SUPERSEDED', superseded_by = :newPlanId, updated_at = now()
+            SET status = 'SUPERSEDED', updated_at = now()
             WHERE id = :oldPlanId AND status IN ('ACTIVE', 'STALE')
             """, nativeQuery = true)
-    int supersede(@Param("oldPlanId") UUID oldPlanId, @Param("newPlanId") UUID newPlanId);
+    int supersede(@Param("oldPlanId") UUID oldPlanId);
+
+    /**
+     * Regeneration step 3: point the just-superseded plan forward to its
+     * replacement, now that the replacement exists (immediate self-FK satisfiable).
+     * Guarded so it only ever writes the pointer once, on the row this call just
+     * superseded.
+     */
+    @Modifying
+    @Query(value = """
+            UPDATE settlement_plan
+            SET superseded_by = :newPlanId, updated_at = now()
+            WHERE id = :oldPlanId AND status = 'SUPERSEDED' AND superseded_by IS NULL
+            """, nativeQuery = true)
+    int linkSuperseded(@Param("oldPlanId") UUID oldPlanId, @Param("newPlanId") UUID newPlanId);
 
     /** Complete the plan once every line is fully CONFIRMED-fulfilled. ACTIVE only. */
     @Modifying
