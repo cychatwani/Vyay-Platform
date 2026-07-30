@@ -23,4 +23,7 @@ public interface PlanLineProgressView {
     long getAmountMinor();
     long getFulfilledMinor();
     long getPendingMinor();
+
+    /** Line creation time; an appended line's createdAt is later than its plan's. */
+    java.time.Instant getCreatedAt();
 }

@@ -45,13 +45,14 @@ public interface SettlementPlanLineRepository extends JpaRepository<SettlementPl
                    l.from_user_id AS fromUserId,
                    l.to_user_id   AS toUserId,
                    l.amount_minor AS amountMinor,
+                   l.created_at   AS createdAt,
                    COALESCE(SUM(f.applied_amount_minor) FILTER (WHERE s.status = 'CONFIRMED'), 0) AS fulfilledMinor,
                    COALESCE(SUM(f.applied_amount_minor) FILTER (WHERE s.status = 'PROPOSED'),  0) AS pendingMinor
             FROM settlement_plan_line l
             LEFT JOIN settlement_plan_line_fulfillment f ON f.plan_line_id = l.id
             LEFT JOIN settlements s ON s.id = f.settlement_id AND s.deleted_at IS NULL
             WHERE l.plan_id = :planId
-            GROUP BY l.id, l.from_user_id, l.to_user_id, l.amount_minor
+            GROUP BY l.id, l.from_user_id, l.to_user_id, l.amount_minor, l.created_at
             ORDER BY l.created_at ASC, l.id ASC
             """, nativeQuery = true)
     List<PlanLineProgressView> findProgressByPlanId(@Param("planId") UUID planId);

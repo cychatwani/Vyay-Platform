@@ -71,4 +71,11 @@ public interface BalanceRepository extends JpaRepository<Balance, UUID> {
               AND b.netAmountMinor <> 0
             """)
     boolean hasOutstandingBalance(@Param("groupId") UUID groupId, @Param("userId") UUID userId);
+
+    /**
+     * Every balance row for a (group, currency) — all users, including departed
+     * ones, so the net positions sum to zero. Feeds settlement-plan generation;
+     * user stays lazy (only user.getId() is read downstream).
+     */
+    List<Balance> findByGroupIdAndCurrencyId(UUID groupId, UUID currencyId);
 }
