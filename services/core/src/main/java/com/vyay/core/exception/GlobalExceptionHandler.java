@@ -13,8 +13,10 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.http.HttpMethod;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
@@ -47,8 +49,47 @@ public class GlobalExceptionHandler {
                 .orElse("Validation error");
 
         return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST) 
+                .status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error(details, "ERR_VALIDATION"));
+    }
+
+    /**
+     * A required @RequestParam was not sent at all — e.g. GET .../settlement-plan
+     * with no currencyCode.
+     * <p>
+     * Handled explicitly because Spring raises this BEFORE the controller method is
+     * invoked, so without a handler here it falls through to {@link #handleGeneral}
+     * and the caller gets 500 / UNKNOWN_ERROR for what is plainly their own
+     * malformed request — while the server logs a stack trace at ERROR for it.
+     */
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiResponse<String>> handleMissingParameter(MissingServletRequestParameterException ex) {
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(
+                        "Required parameter '" + ex.getParameterName() + "' is missing.",
+                        "ERR_MISSING_PARAMETER"));
+    }
+
+    /**
+     * A @RequestParam or @PathVariable was sent but could not be converted to the
+     * declared type — a malformed UUID in the path, a non-numeric page, an unknown
+     * enum constant. Same reason as above: raised during argument binding, so it
+     * would otherwise surface as a 500.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<String>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        Class<?> required = ex.getRequiredType();
+        String message = (required != null && required.isEnum())
+                ? "Invalid value '" + ex.getValue() + "' for '" + ex.getName() + "'. Allowed values: "
+                        + Arrays.stream(required.getEnumConstants())
+                                .map(Object::toString)
+                                .collect(Collectors.joining(", "))
+                : "Invalid value '" + ex.getValue() + "' for parameter '" + ex.getName() + "'.";
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(message, "ERR_INVALID_PARAMETER"));
     }
 
     @ExceptionHandler(AuthException.class)

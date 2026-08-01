@@ -15,7 +15,9 @@ import com.vyay.core.exception.business.InviteLinkExpiredException;
 import com.vyay.core.exception.business.InviteLinkInactiveException;
 import com.vyay.core.exception.business.InviteLinkNotFoundException;
 import com.vyay.core.exception.business.NotAMemberException;
+import com.vyay.core.exception.business.OutstandingBalanceException;
 import com.vyay.core.exception.business.UserNotInvitedException;
+import com.vyay.core.repository.BalanceRepository;
 import com.vyay.core.repository.GroupInviteLinkRepository;
 import com.vyay.core.repository.GroupMembershipRepository;
 import com.vyay.core.repository.GroupRepository;
@@ -35,6 +37,7 @@ public class GroupMembershipService {
     private final GroupRepository groupRepository;
     private final GroupInviteLinkRepository groupInviteLinkRepository;
     private final GroupMembershipRepository groupMembershipRepository;
+    private final BalanceRepository balanceRepository;
     private final UserRepository userRepository;
     private final GroupService groupService;
 
@@ -42,12 +45,14 @@ public class GroupMembershipService {
                                   GroupRepository groupRepository,
                                   GroupInviteLinkRepository groupInviteLinkRepository,
                                   GroupMembershipRepository groupMembershipRepository,
+                                  BalanceRepository balanceRepository,
                                   UserRepository userRepository,
                                   GroupService groupService) {
         this.jwtService = jwtService;
         this.groupRepository = groupRepository;
         this.groupInviteLinkRepository = groupInviteLinkRepository;
         this.groupMembershipRepository = groupMembershipRepository;
+        this.balanceRepository = balanceRepository;
         this.userRepository = userRepository;
         this.groupService = groupService;
     }
@@ -112,6 +117,10 @@ public class GroupMembershipService {
 
         if (me.getRole() == GroupRole.ADMIN) {
             throw new AdminCannotLeaveException();
+        }
+
+        if (balanceRepository.hasOutstandingBalance(groupId, principal.getId())) {
+            throw new OutstandingBalanceException();
         }
 
         // Single atomic update: stamps deleted_at + status=LEFT + left_at in one statement.

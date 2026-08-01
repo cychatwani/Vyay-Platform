@@ -58,4 +58,24 @@ public interface BalanceRepository extends JpaRepository<Balance, UUID> {
      */
     @Query("SELECT b FROM Balance b JOIN FETCH b.currency WHERE b.group.id = :groupId")
     List<Balance> findByGroupIdWithCurrency(@Param("groupId") UUID groupId);
+
+    /**
+     * True if the user holds a non-zero position in this group in ANY currency.
+     * Guards group exit: leaving with an open balance would break the per-group
+     * zero-sum invariant that settlement planning depends on.
+     */
+    @Query("""
+            SELECT COUNT(b) > 0 FROM Balance b
+            WHERE b.group.id = :groupId
+              AND b.user.id = :userId
+              AND b.netAmountMinor <> 0
+            """)
+    boolean hasOutstandingBalance(@Param("groupId") UUID groupId, @Param("userId") UUID userId);
+
+    /**
+     * Every balance row for a (group, currency) — all users, including departed
+     * ones, so the net positions sum to zero. Feeds settlement-plan generation;
+     * user stays lazy (only user.getId() is read downstream).
+     */
+    List<Balance> findByGroupIdAndCurrencyId(UUID groupId, UUID currencyId);
 }

@@ -1,0 +1,31 @@
+package com.vyay.core.dto.response.settlement;
+
+import com.vyay.core.enums.SettlementPlanStatus;
+import lombok.Builder;
+import lombok.Getter;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * Read model for a settlement plan: the aggregate plus its lines with derived
+ * progress. Assembled in the service (multi-source: plan + progress projection +
+ * currency), so no static factory here.
+ *
+ * One list, and it is complete: every in-flight settlement has a line of its own,
+ * so the lines always cover the group's real balances exactly. Nothing about the
+ * plan lives outside {@code lines}.
+ */
+@Getter
+@Builder
+public class SettlementPlanResponseDTO {
+
+    private UUID planId;
+    private UUID groupId;
+    private String currencyCode;
+    private String currencySymbol;
+    private SettlementPlanStatus status;
+    private Instant createdAt;
+    private List<SettlementPlanLineResponseDTO> lines;
+}
