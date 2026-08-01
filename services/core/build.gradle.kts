@@ -15,6 +15,13 @@ version = "0.0.1"
 // re-declared here (pom.xml pinned 17; step 1 moved the platform to 21).
 
 dependencies {
+    // --- Domain event contracts ---
+    // Core is the PRODUCER of these; the module itself has zero dependencies so
+    // this adds nothing transitive. `implementation`, not `api`: core is an
+    // application, not a library, so nothing consumes its compile classpath.
+    // Nothing emits events yet — this wiring only makes the types importable.
+    implementation(project(":libs:vyay-events"))
+
     // --- Web + Security (versions from the Spring Boot BOM) ---
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-security")
