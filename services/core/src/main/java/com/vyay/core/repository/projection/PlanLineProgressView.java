@@ -24,6 +24,9 @@ public interface PlanLineProgressView {
     long getFulfilledMinor();
     long getPendingMinor();
 
-    /** Line creation time; an appended line's createdAt is later than its plan's. */
+    /** Stored on the line by whoever wrote it, not derived from timestamps. */
+    boolean getAppended();
+
+    /** Line creation time; drives display order, no longer the appended test. */
     java.time.Instant getCreatedAt();
 }

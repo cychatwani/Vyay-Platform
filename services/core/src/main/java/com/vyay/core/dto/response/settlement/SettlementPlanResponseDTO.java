@@ -12,6 +12,10 @@ import java.util.UUID;
  * Read model for a settlement plan: the aggregate plus its lines with derived
  * progress. Assembled in the service (multi-source: plan + progress projection +
  * currency), so no static factory here.
+ *
+ * One list, and it is complete: every in-flight settlement has a line of its own,
+ * so the lines always cover the group's real balances exactly. Nothing about the
+ * plan lives outside {@code lines}.
  */
 @Getter
 @Builder

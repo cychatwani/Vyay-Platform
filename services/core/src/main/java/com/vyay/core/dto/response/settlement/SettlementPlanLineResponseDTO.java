@@ -8,7 +8,6 @@ import lombok.Builder;
 import lombok.Getter;
 
 import java.math.BigDecimal;
-import java.time.Instant;
 import java.util.UUID;
 
 /**
@@ -19,7 +18,12 @@ import java.util.UUID;
  * pending   = PROPOSED settlements applied to this line (in-flight, inert).
  * remaining = amount - fulfilled - pending — "still to send", the actionable
  *             figure. (The truly-unsettled amount is amount - fulfilled.)
- * appended  = this line was added after the plan was generated.
+ * appended  = this line was added after the plan was generated. Read straight off
+ *             the line, which stores it.
+ *
+ * A carried line — one written for a settlement that was already in flight when
+ * the plan was generated — reads amount = pending = the settlement's amount, so
+ * remaining is 0: the plan shows the money as on its way and never asks for it.
  */
 @Getter
 @Builder
@@ -36,9 +40,7 @@ public class SettlementPlanLineResponseDTO {
     private SettlementPlanLineStatus status;
     private boolean appended;
 
-    public static SettlementPlanLineResponseDTO from(PlanLineProgressView v,
-                                                     Currency currency,
-                                                     Instant planCreatedAt) {
+    public static SettlementPlanLineResponseDTO from(PlanLineProgressView v, Currency currency) {
         long amount = v.getAmountMinor();
         long fulfilled = v.getFulfilledMinor();
         long pending = v.getPendingMinor();
@@ -56,7 +58,7 @@ public class SettlementPlanLineResponseDTO {
                 .pending(MoneyUtils.toMajor(pending, currency))
                 .remaining(MoneyUtils.toMajor(amount - fulfilled - pending, currency))
                 .status(status)
-                .appended(v.getCreatedAt().isAfter(planCreatedAt))
+                .appended(v.getAppended())
                 .build();
     }
 }
