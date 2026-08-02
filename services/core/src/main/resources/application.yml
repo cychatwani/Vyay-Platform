@@ -86,3 +86,12 @@ app:
 
   frontend:
     base-url: ${APP_FRONTEND_BASE_URL:theVyayApp.com}
+
+  outbox:
+    relay-enabled: true
+    poll-interval: 1s
+    reap-interval: 60s
+    batch-size: 100
+    max-attempts: 5
+    claim-timeout: 5m      # must exceed publish-timeout
+    publish-timeout: 10s
